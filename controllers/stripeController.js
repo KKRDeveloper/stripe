@@ -1,25 +1,37 @@
-const Stripe = require('stripe');
+const Stripe = require("stripe");
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-exports.createPaymentIntent = async (req, res) => { 
+exports.createPaymentIntent = async (req, res) => {
   try {
-    const { amount, currency, paymentMethod } = req.body; 
-    // Validate input
-    if (!['card', 'paypal', 'bank_transfer'].includes(paymentMethod)) {
-      return res.status(400).json({ error: 'Invalid payment method selected' });
+    const { products } = req.body;
+
+    // todo: Handle the case where the products array is empty
+    if (products?.length === 0) {
+      return res.status(400).json({ error: "Missing required product data" });
     }
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount * 100,  
-      currency,
-      payment_method_types: [paymentMethod], 
+    // todo: Please verify the product data from the database before creating the payment intent
+    const lineItems = products?.map((product) => ({
+      price_data: {
+        currency: "cad",
+        product_data: {
+          name: product.name,
+        },
+        unit_amount: product.price * 100,
+      },
+      quantity: product.quantity,
+    }));
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      line_items: lineItems,
+      mode: "payment",
+      success_url: `${process.env.FRONTEND_URL}sucess`,
+      cancel_url: `${process.env.FRONTEND_URL}cancel`,
     });
 
-    res.status(200).json({
-      clientSecret: paymentIntent.client_secret,
-      paymentMethod: paymentMethod,
-    });
-  } catch (error) { 
+    res.status(200).json({ sessionId: session.id });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
@@ -32,7 +44,7 @@ exports.createPaymentIntent = async (req, res) => {
 //     if (!paymentIntentId || !status) {
 //       return res.status(400).json({ error: 'Missing required payment data' });
 //     }
- 
+
 //     const payment = new Payment({
 //       paymentIntentId,
 //       status,
